@@ -1,4 +1,3 @@
-## ✅ FULL BACKEND FILE: `app.py`
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from user import init_user_db, register_user, verify_user, generate_token
@@ -83,9 +82,6 @@ def run(user):
     sql = data['sql']
     result = execute_query(email, sql)
     return jsonify({'result': result})
-
-
-
 
 
 if __name__ == '__main__':
