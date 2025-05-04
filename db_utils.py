@@ -27,3 +27,22 @@ def execute_query(email, sql):
         return {"error": str(e)}
     finally:
         conn.close()
+
+def fetch_schema(email):
+    db_path = get_user_db_path(email)
+    if not os.path.exists(db_path):
+        return None
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        schema = {}
+        for table in tables:
+            table_name = table[0]
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            schema[table_name] = [col[1] for col in columns] 
+        return schema
+    finally:
+        conn.close()
