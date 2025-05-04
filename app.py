@@ -34,18 +34,13 @@ def login():
     else:
         return jsonify({"error": "Invalid credentials"}), 401
 
+import pandas as pd
+
 @app.route('/upload-schema', methods=['POST'])
 @login_required
 def upload_schema(user):
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
-
-    try:
-        import openpyxl  # Test if import works
-    except ImportError:
-        return jsonify({
-            'error': "Server missing required Excel support. Please contact admin."
-        }), 500
 
     user_id = user['sub']
     file = request.files['file']
@@ -56,28 +51,28 @@ def upload_schema(user):
     file_path = os.path.join(user_path, filename)
     file.save(file_path)
 
-    db_path = get_user_db_path(user_id)
-    conn = sqlite3.connect(db_path)
-
     try:
-        if filename.endswith('.csv'):
-            df = pd.read_csv(file_path)
-            table_name = os.path.splitext(filename)[0]
-            df.to_sql(table_name, conn, if_exists='replace', index=False)
-        elif filename.endswith(('.xls', '.xlsx')):
-            # Use openpyxl explicitly for xlsx files
-            excel = pd.ExcelFile(file_path, engine='openpyxl')
-            for sheet_name in excel.sheet_names:
-                df = excel.parse(sheet_name)
-                df.to_sql(sheet_name, conn, if_exists='replace', index=False)
-        else:
-            return jsonify({'error': 'Unsupported file format'}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        conn.close()
+        # Handle Excel file
+        if filename.endswith(('.xlsx', '.xls')):
+            xl = pd.ExcelFile(file_path)
+            schema = []
+            for sheet in xl.sheet_names:
+                df = xl.parse(sheet)
+                schema.append(f"📄 **{sheet}**\n" + '\n'.join(f"{col}: {df[col].dtype}" for col in df.columns))
+            return jsonify({'schema': '\n\n'.join(schema)})
 
-    return jsonify({'message': 'Schema uploaded successfully'}), 200
+        # Handle CSV file
+        elif filename.endswith('.csv'):
+            df = pd.read_csv(file_path)
+            schema = "📄 **data**\n" + '\n'.join(f"{col}: {df[col].dtype}" for col in df.columns)
+            return jsonify({'schema': schema})
+
+        else:
+            return jsonify({'error': 'Unsupported file type'}), 400
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to parse file: {str(e)}'}), 500
+
 @app.route('/schema', methods=['GET'])
 @login_required
 def get_schema(user):
