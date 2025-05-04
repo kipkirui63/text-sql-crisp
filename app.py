@@ -40,13 +40,6 @@ def upload_schema(user):
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
 
-    try:
-        import openpyxl  # Test if import works
-    except ImportError:
-        return jsonify({
-            'error': "Server missing required Excel support. Please contact admin."
-        }), 500
-
     user_id = user['sub']
     file = request.files['file']
     filename = file.filename
@@ -56,6 +49,7 @@ def upload_schema(user):
     file_path = os.path.join(user_path, filename)
     file.save(file_path)
 
+    # Load into SQLite
     db_path = get_user_db_path(user_id)
     conn = sqlite3.connect(db_path)
 
@@ -65,8 +59,7 @@ def upload_schema(user):
             table_name = os.path.splitext(filename)[0]
             df.to_sql(table_name, conn, if_exists='replace', index=False)
         elif filename.endswith(('.xls', '.xlsx')):
-            # Use openpyxl explicitly for xlsx files
-            excel = pd.ExcelFile(file_path, engine='openpyxl')
+            excel = pd.ExcelFile(file_path)
             for sheet_name in excel.sheet_names:
                 df = excel.parse(sheet_name)
                 df.to_sql(sheet_name, conn, if_exists='replace', index=False)
@@ -77,7 +70,8 @@ def upload_schema(user):
     finally:
         conn.close()
 
-    return jsonify({'message': 'Schema uploaded successfully'}), 200
+    return jsonify({'message': 'Schema uploaded and saved'}), 200
+
 @app.route('/schema', methods=['GET'])
 @login_required
 def get_schema(user):
