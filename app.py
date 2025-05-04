@@ -34,43 +34,48 @@ def login():
     else:
         return jsonify({"error": "Invalid credentials"}), 401
 
+
 @app.route('/upload-schema', methods=['POST'])
 @login_required
 def upload_schema(user):
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
 
-    user_id = user['sub']
     file = request.files['file']
     filename = file.filename
-    user_path = f"user_uploads/{user_id}/"
-    os.makedirs(user_path, exist_ok=True)
+    email = user['sub']
 
+    if not filename.endswith(('.csv', '.xlsx', '.xls')):
+        return jsonify({'error': 'Unsupported file type. Please upload .csv or .xlsx'}), 400
+
+    # Save the uploaded file
+    user_path = f"user_uploads/{email.replace('@', '_at_')}/"
+    os.makedirs(user_path, exist_ok=True)
     file_path = os.path.join(user_path, filename)
     file.save(file_path)
 
-    # Load into SQLite
-    db_path = get_user_db_path(user_id)
-    conn = sqlite3.connect(db_path)
-
     try:
+        schema_sections = []
+
         if filename.endswith('.csv'):
             df = pd.read_csv(file_path)
-            table_name = os.path.splitext(filename)[0]
-            df.to_sql(table_name, conn, if_exists='replace', index=False)
-        elif filename.endswith(('.xls', '.xlsx')):
-            excel = pd.ExcelFile(file_path)
-            for sheet_name in excel.sheet_names:
-                df = excel.parse(sheet_name)
-                df.to_sql(sheet_name, conn, if_exists='replace', index=False)
-        else:
-            return jsonify({'error': 'Unsupported file format'}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        conn.close()
+            schema_str = "📄 **data.csv**\n" + '\n'.join([f"{col}: {str(dtype)}" for col, dtype in df.dtypes.items()])
+            schema_sections.append(schema_str)
 
-    return jsonify({'message': 'Schema uploaded and saved'}), 200
+        elif filename.endswith(('.xlsx', '.xls')):
+            xl = pd.ExcelFile(file_path)
+            for sheet in xl.sheet_names:
+                df = xl.parse(sheet)
+                section = f"📄 **{sheet}**\n" + '\n'.join([f"{col}: {str(dtype)}" for col, dtype in df.dtypes.items()])
+                schema_sections.append(section)
+
+        full_schema = '\n\n'.join(schema_sections)
+        return jsonify({'message': 'Schema uploaded and parsed successfully', 'schema': full_schema})
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to parse file: {str(e)}'}), 500
+
+
 
 @app.route('/schema', methods=['GET'])
 @login_required
