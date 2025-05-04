@@ -34,8 +34,6 @@ def login():
     else:
         return jsonify({"error": "Invalid credentials"}), 401
 
-import pandas as pd
-
 @app.route('/upload-schema', methods=['POST'])
 @login_required
 def upload_schema(user):
@@ -51,27 +49,28 @@ def upload_schema(user):
     file_path = os.path.join(user_path, filename)
     file.save(file_path)
 
+    # Load into SQLite
+    db_path = get_user_db_path(user_id)
+    conn = sqlite3.connect(db_path)
+
     try:
-        # Handle Excel file
-        if filename.endswith(('.xlsx', '.xls')):
-            xl = pd.ExcelFile(file_path)
-            schema = []
-            for sheet in xl.sheet_names:
-                df = xl.parse(sheet)
-                schema.append(f"📄 **{sheet}**\n" + '\n'.join(f"{col}: {df[col].dtype}" for col in df.columns))
-            return jsonify({'schema': '\n\n'.join(schema)})
-
-        # Handle CSV file
-        elif filename.endswith('.csv'):
+        if filename.endswith('.csv'):
             df = pd.read_csv(file_path)
-            schema = "📄 **data**\n" + '\n'.join(f"{col}: {df[col].dtype}" for col in df.columns)
-            return jsonify({'schema': schema})
-
+            table_name = os.path.splitext(filename)[0]
+            df.to_sql(table_name, conn, if_exists='replace', index=False)
+        elif filename.endswith(('.xls', '.xlsx')):
+            excel = pd.ExcelFile(file_path)
+            for sheet_name in excel.sheet_names:
+                df = excel.parse(sheet_name)
+                df.to_sql(sheet_name, conn, if_exists='replace', index=False)
         else:
-            return jsonify({'error': 'Unsupported file type'}), 400
-
+            return jsonify({'error': 'Unsupported file format'}), 400
     except Exception as e:
-        return jsonify({'error': f'Failed to parse file: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+    return jsonify({'message': 'Schema uploaded and saved'}), 200
 
 @app.route('/schema', methods=['GET'])
 @login_required
