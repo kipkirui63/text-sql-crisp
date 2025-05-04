@@ -1,4 +1,3 @@
-## ✅ FULL BACKEND FILE: `app.py`
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from user import init_user_db, register_user, verify_user, generate_token
@@ -9,7 +8,12 @@ from db_utils import execute_query, create_user_db
 import os
 
 app = Flask(__name__)
-CORS(app)
+
+# Allow frontend access (local + deployed)
+CORS(app, origins=[
+    "http://localhost:3000",
+    "https://your-frontend-url.com"
+], supports_credentials=True)
 
 # INIT
 init_user_db()
@@ -23,7 +27,25 @@ def register():
         return jsonify({"message": "Registered successfully"}), 200
     else:
         return jsonify({"error": "Email already exists"}), 400
-    
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    if verify_user(data["email"], data["password"]):
+        token = generate_token(data["email"])
+        return jsonify({
+            "token": token,
+            "user": {
+                "email": data["email"]
+            }
+        }), 200
+    else:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+@app.route('/verify-token', methods=['GET'])
+@login_required
+def verify_token(user):
+    return jsonify({"message": "Token is valid", "user": {"email": user["sub"]}}), 200
 
 @app.route('/upload-schema', methods=['POST'])
 @login_required
@@ -41,18 +63,6 @@ def upload_schema(user):
     file.save(file_path)
 
     return jsonify({'message': 'Schema uploaded successfully', 'path': file_path})
-
-
-
-
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    if verify_user(data["email"], data["password"]):
-        token = generate_token(data["email"])
-        return jsonify({"token": token}), 200
-    else:
-        return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route('/transcribe', methods=['POST'])
 @login_required
