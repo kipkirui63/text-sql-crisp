@@ -8,6 +8,8 @@ from db_utils import execute_query, create_user_db, get_user_db_path
 import os
 import sqlite3
 import pandas as pd
+from langchain_utils import get_langchain_sql_chain
+from db_utils import get_user_db_path
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
@@ -134,6 +136,28 @@ def run(user):
     sql = data['sql']
     result = execute_query(email, sql)
     return jsonify({'result': result})
+
+
+@app.route('/ask', methods=['POST'])
+@login_required
+def ask_query(user):
+    data = request.get_json()
+    question = data.get("question")
+    if not question:
+        return jsonify({"error": "Missing question"}), 400
+
+    db_path = get_user_db_path(user["sub"])
+
+    try:
+        chain = get_langchain_sql_chain(db_path)
+        response = chain.run(question)
+        return jsonify({"answer": response})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
